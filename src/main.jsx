@@ -1,5 +1,6 @@
 import React, {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
+import {flushSync} from 'react-dom';
 import formImage from './media/forma.webp';
 import velora from './media/velora.webp';
 import agenda from './media/agenda.webp';
@@ -81,13 +82,36 @@ const services = [
 
 function Modal({title,close,children,kind}){
   const ref=useRef(null);
+  const exitAnimation = useRef(null);
   useEffect(()=>{
     const el=ref.current, trigger=document.activeElement;
     el.showModal();
     document.body.classList.add('modal-open');
-    return ()=>{el.close();document.body.classList.remove('modal-open');trigger?.focus();};
+    return ()=>{
+      exitAnimation.current?.cancel();
+      el.close();
+      document.body.classList.remove('modal-open');
+      trigger?.focus();
+    };
   },[]);
-  return <dialog ref={ref} className={'modal '+kind} aria-label={title} onCancel={e=>{e.preventDefault();close();}} onClick={e=>{if(e.target===ref.current)close();}}><div className="modal-inner"><div className="modal-top"><span>{title}</span><button className="outline" onClick={close} autoFocus>Fechar ×</button></div>{children}</div></dialog>;
+
+  function dismiss() {
+    const dialog = ref.current;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches || typeof dialog.animate !== 'function') {
+      close();
+      return;
+    }
+    if (exitAnimation.current) return;
+    const opacity = getComputedStyle(dialog).opacity;
+    dialog.dataset.closing = 'true';
+    exitAnimation.current = dialog.animate(
+      [{opacity}, {opacity: 0}],
+      {duration: 160, easing: 'ease-in', fill: 'forwards'},
+    );
+    exitAnimation.current.finished.then(close, () => {});
+  }
+
+  return <dialog ref={ref} className={'modal '+kind} aria-label={title} onCancel={e=>{e.preventDefault();dismiss();}} onClick={e=>{if(e.target===ref.current)dismiss();}}><div className="modal-inner"><div className="modal-top"><span>{title}</span><button className="outline" onClick={dismiss} autoFocus>Fechar ×</button></div>{children}</div></dialog>;
 }
 const whatsappUrl = 'https://wa.me/5582998025511';
 
@@ -119,7 +143,7 @@ function ProjectGallery({item}) {
   return (
     <section className="project-gallery" aria-label={'Imagens de ' + item.name} onKeyDown={handleKey}>
       <div className={'case-picture ' + item.imageClass}>
-        <img src={slide.image} alt={slide.alt}/>
+        <img key={slide.image} src={slide.image} alt={slide.alt}/>
       </div>
       <div className="gallery-controls">
         <button type="button" className="outline" onClick={() => move(-1)} aria-label="Imagem anterior">‹</button>
@@ -239,7 +263,10 @@ function ThemeSwitch({light, changeTheme}) {
 
 function App() {
   const [light, setLight] = useState(readLightTheme);
-  const [showProfile, setShowProfile] = useState(() => window.location.hash === '#sobre');
+  const [{showProfile, fadeIn}, setRoute] = useState(() => ({
+    showProfile: window.location.hash === '#sobre',
+    fadeIn: false,
+  }));
   const previousProfile = useRef(showProfile);
 
   useEffect(() => {
@@ -257,9 +284,32 @@ function App() {
   }
 
   useEffect(() => {
-    const navigate = () => setShowProfile(window.location.hash === '#sobre');
+    let transition;
+
+    function navigate() {
+      transition?.skipTransition();
+      const nextProfile = window.location.hash === '#sobre';
+      if (previousProfile.current === nextProfile) return;
+
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (reduceMotion || typeof document.startViewTransition !== 'function') {
+        setRoute({showProfile: nextProfile, fadeIn: !reduceMotion});
+        return;
+      }
+
+      transition = document.startViewTransition(() => {
+        const currentProfile = window.location.hash === '#sobre';
+        if (currentProfile !== previousProfile.current) {
+          flushSync(() => setRoute({showProfile: currentProfile, fadeIn: false}));
+        }
+      });
+    }
+
     window.addEventListener('hashchange', navigate);
-    return () => window.removeEventListener('hashchange', navigate);
+    return () => {
+      transition?.skipTransition();
+      window.removeEventListener('hashchange', navigate);
+    };
   }, []);
 
   useLayoutEffect(() => {
@@ -282,19 +332,21 @@ function App() {
   const theme = <ThemeSwitch light={light} changeTheme={changeTheme}/>;
   return (
     <div className="site">
-      {showProfile ? (
-        <>
-          <a className="skip" href="#sobre">Pular para apresentação</a>
-          <header className="profile-header content">
-            <a className="logo" href="#inicio" aria-label="alfon, início"><BrandMark/></a>
-            {theme}
-            <a className="outline profile-back" href="#inicio">Voltar ao estúdio</a>
-          </header>
-          <Profile whatsappUrl={whatsappUrl}/>
-        </>
-      ) : (
-        <Studio theme={theme}/>
-      )}
+      <div key={showProfile ? 'profile' : 'studio'} className={fadeIn ? 'page-fade-in' : undefined}>
+        {showProfile ? (
+          <>
+            <a className="skip" href="#sobre">Pular para apresentação</a>
+            <header className="profile-header content">
+              <a className="logo" href="#inicio" aria-label="alfon, início"><BrandMark/></a>
+              {theme}
+              <a className="outline profile-back" href="#inicio">Voltar ao estúdio</a>
+            </header>
+            <Profile whatsappUrl={whatsappUrl}/>
+          </>
+        ) : (
+          <Studio theme={theme}/>
+        )}
+      </div>
       <footer className="content">
         <a href="#inicio" className="footer-brand" aria-label="alfon, início"><Wordmark/></a>
         <span>Estúdio digital · Maceió, AL</span>
@@ -352,7 +404,7 @@ function Studio({theme}){
         {motionPaused ? 'Retomar animação' : 'Pausar animação'}
       </button>
       <div className="grid-lines" aria-hidden="true"/>
-      <header><a className="logo" href="#inicio" aria-label="alfon, início"><BrandMark/></a>{theme}<div className="navigation"><button className="outline nav-contact" onClick={()=>setContactOpen(true)}>Contato</button><button ref={menuButton} className="menu-toggle" aria-expanded={menu} aria-controls="nav-list" onClick={()=>setMenu(!menu)}>Menu <b aria-hidden="true">{menu?'−':'+'}</b></button>{menu&&<nav id="nav-list" aria-label="Menu principal">{[['Projetos','#projetos'],['Serviços','#servicos'],['Sobre Alisson','#sobre']].map(([t,h])=><a key={h} href={h} onClick={()=>setMenu(false)}>{t}</a>)}<button onClick={()=>{menuButton.current?.focus();setMenu(false);setContactOpen(true);}}>Contato</button></nav>}</div></header>
+      <header><a className="logo" href="#inicio" aria-label="alfon, início"><BrandMark/></a>{theme}<div className="navigation"><button className="outline nav-contact" onClick={()=>setContactOpen(true)}>Contato</button><button ref={menuButton} className="menu-toggle" aria-expanded={menu} aria-controls="nav-list" onClick={()=>setMenu(!menu)}>Menu <b aria-hidden="true">{menu?'−':'+'}</b></button><nav id="nav-list" aria-label="Menu principal" data-open={menu} inert={!menu}>{[['Projetos','#projetos'],['Serviços','#servicos'],['Sobre Alisson','#sobre']].map(([t,h])=><a key={h} href={h} onClick={()=>setMenu(false)}>{t}</a>)}<button onClick={()=>{menuButton.current?.focus();setMenu(false);setContactOpen(true);}}>Contato</button></nav></div></header>
       <div className="identity"><div className="side-label left">Estratégia<br/>Design<br/>Desenvolvimento</div><div className="signature" data-text-reveal><h1 aria-label="alfon"><Wordmark/></h1><p>DESIGN E DESENVOLVIMENTO WEB</p></div><div className="side-label right">Maceió, AL<br/>Brasil</div></div>
       <div className="hero-base"><div className="pitch" data-text-reveal><p className="micro">ESTÚDIO WEB EM MACEIÓ</p><h2>Um site que ajuda<br/> seu cliente a decidir.</h2><p>Seu cliente chega pelo Google, pelo Instagram ou por indicação. Criamos o site onde ele pode entender o que você oferece, consultar seus produtos e saber como falar com você.</p>
         <div className="actions hero-actions">
@@ -361,7 +413,7 @@ function Studio({theme}){
           <a className="outline" href="#projetos">Ver portfólio</a>
         </div>
       </div>
-      <aside className="feature" aria-label="Projeto em destaque"><div className="feature-controls"><span>Em destaque</span><div><button onClick={()=>cycle(-1)} aria-label="Projeto anterior">‹</button><span aria-live="polite">{String(index + 1).padStart(2, '0')} / {String(cases.length).padStart(2, '0')}</span><button onClick={()=>cycle(1)} aria-label="Próximo projeto">›</button></div></div><button className={'featured-work ' + item.imageClass} onClick={()=>setActive(item)} aria-label={'Abrir '+item.name}><img src={item.image} alt=""/></button><div className="feature-foot">{item.name}<small>{item.type}</small></div></aside></div>
+      <aside className="feature" aria-label="Projeto em destaque"><div className="feature-controls"><span>Em destaque</span><div><button onClick={()=>cycle(-1)} aria-label="Projeto anterior">‹</button><span aria-live="polite">{String(index + 1).padStart(2, '0')} / {String(cases.length).padStart(2, '0')}</span><button onClick={()=>cycle(1)} aria-label="Próximo projeto">›</button></div></div><button className={'featured-work ' + item.imageClass} onClick={()=>setActive(item)} aria-label={'Abrir '+item.name}><img key={item.image} src={item.image} alt=""/></button><div className="feature-foot">{item.name}<small>{item.type}</small></div></aside></div>
     </section>
     <main><section className="works content" id="projetos" ref={portfolio} tabIndex={-1}><div className="section-head" data-text-reveal><div><p className="micro">DESENVOLVIMENTO WEB</p><h2>Projetos selecionados<span>.</span></h2></div><p>O VELORA apresenta dois carros conceito. O Agenda Clara organiza reservas. O Forest Shuffle ajuda a conferir a pontuação de uma partida. Abra cada projeto para ver como a interface resolve uma tarefa diferente.</p></div><div className="cards">{cases.map(c=><button key={c.name} className="work" onClick={()=>setActive(c)}><span className={'cover ' + c.imageClass}><img src={c.image} alt={c.alt} loading="lazy"/><i>Ver projeto</i></span><span className="work-caption" data-text-reveal><b>{c.name}</b><small>{c.type}</small></span></button>)}</div></section>
     <section className="services content" id="servicos"><div data-text-reveal><p className="micro">SERVIÇOS DO ESTÚDIO</p><h2>Que tipo de site seu<br/> negócio precisa<span>?</span></h2></div><div className="service-list">{services.map(([s,p],i)=><details key={s} name="services" open={i===0}><summary data-text-reveal>{s}<span aria-hidden="true"/></summary><p data-text-reveal>{p}</p><button className="outline" onClick={()=>setContactOpen(true)}>Conversar sobre o projeto</button></details>)}</div></section>
