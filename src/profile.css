@@ -86,14 +86,8 @@
   height: auto;
   aspect-ratio: 4 / 5;
   object-fit: cover;
+  object-position: center 75%;
   background: #101014;
-}
-
-.profile-photo figcaption {
-  color: var(--sub);
-  font-size: .875rem;
-  padding: 10px 15px;
-  border-top: 1px solid var(--line);
 }
 
 .profile-section {

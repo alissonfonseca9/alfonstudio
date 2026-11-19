@@ -1,5 +1,5 @@
 import React from 'react';
-import portrait from './media/alisson-perfil-temporario.webp';
+import portrait from './media/alisson-perfil.webp';
 import './profile.css';
 
 const skills = [
@@ -56,8 +56,7 @@ export default function Profile({whatsappUrl}) {
           </div>
         </div>
         <figure className="profile-photo">
-          <img src={portrait} width="640" height="800" alt="" fetchPriority="high"/>
-          <figcaption>Imagem ilustrativa temporária</figcaption>
+          <img src={portrait} width="768" height="1358" alt="Retrato de Alisson Fonseca" fetchPriority="high"/>
         </figure>
       </section>
 
