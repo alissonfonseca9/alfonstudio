@@ -53,6 +53,7 @@ export default function Profile({whatsappUrl}) {
           <div className="actions">
             <a className="blue" href="#projetos">Ver portfólio</a>
             <a className="outline" href="https://github.com/alissonfonseca9">GitHub</a>
+            <a className="outline" href="https://www.linkedin.com/in/joaoalissondasilvafonseca/">LinkedIn</a>
           </div>
         </div>
         <figure className="profile-photo">
