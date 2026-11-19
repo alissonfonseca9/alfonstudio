@@ -1,0 +1,5 @@
+node_modules/
+dist/
+abrir-vertice.html
+.env*
+abrir-alfon.html
